@@ -43,7 +43,7 @@ export default function Stationboard() {
       const data: ConnectionsResponse = await response.json();
 
       // Convert connections to Journey format
-      const journeysWithConnectionsData: JourneyWithConnection[] = data.connections
+      const journeysWithConnectionsData = data.connections
         .filter(conn => conn.sections.length >= 2 && conn.sections[0].journey) // Must have at least 2 sections with first being a train
         .map((conn) => {
           const firstSection = conn.sections[0]; // Zürich HB → Aarau
@@ -126,7 +126,7 @@ export default function Stationboard() {
             connections: connections.length > 0 ? connections : undefined,
           };
         })
-        .filter((j): j is JourneyWithConnection => j !== null);
+        .filter((j) => j !== null) as JourneyWithConnection[];
 
       setJourneysWithConnections(journeysWithConnectionsData);
 
