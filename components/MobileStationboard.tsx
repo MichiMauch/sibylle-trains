@@ -594,18 +594,11 @@ export default function MobileStationboard() {
                       className="absolute left-0 top-1/2 transform -translate-y-1/2 flex items-center justify-center w-14 h-14 bg-white rounded-full shadow-lg hover:bg-gray-100 transition-all active:scale-95"
                       title="Vorheriger Zug"
                     >
-                      <svg
-                        xmlns="http://www.w3.org/2000/svg"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="#2E327B"
-                        strokeWidth="3"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        className="w-7 h-7"
-                      >
-                        <polyline points="15 18 9 12 15 6"></polyline>
-                      </svg>
+                      <img
+                        src="/icons/arrow-left-medium.svg"
+                        alt="Zurück"
+                        className="w-9 h-9"
+                      />
                     </button>
                   )}
 
@@ -639,18 +632,11 @@ export default function MobileStationboard() {
                       className="absolute right-0 top-1/2 transform -translate-y-1/2 flex items-center justify-center w-14 h-14 bg-white rounded-full shadow-lg hover:bg-gray-100 transition-all active:scale-95"
                       title="Nächster Zug"
                     >
-                      <svg
-                        xmlns="http://www.w3.org/2000/svg"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="#2E327B"
-                        strokeWidth="3"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        className="w-7 h-7"
-                      >
-                        <polyline points="9 18 15 12 9 6"></polyline>
-                      </svg>
+                      <img
+                        src="/icons/arrow-right-medium.svg"
+                        alt="Weiter"
+                        className="w-9 h-9"
+                      />
                     </button>
                   )}
                 </div>
