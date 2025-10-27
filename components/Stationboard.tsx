@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import dynamic from 'next/dynamic';
 import type { Journey, StationboardResponse, Connection, ConnectionsResponse } from '@/types/transport';
 import { isTrainRunning } from '@/utils/trainPosition';
@@ -30,10 +30,22 @@ export default function Stationboard() {
   const [selectedJourney, setSelectedJourney] = useState<Journey | null>(null);
   const [openAccordions, setOpenAccordions] = useState<Set<number>>(new Set([0]));
   const [direction, setDirection] = useState<Direction>('toZurich');
+  const fetchingRef = useRef(false);
+  const aarauDataCache = useRef<Journey[]>([]);
+  const connectionsDataCache = useRef<JourneyWithConnection[]>([]);
 
-  const fetchConnectionsRoute = async () => {
+  const fetchConnectionsRoute = useCallback(async (mode: 'full' | 'quick' = 'full') => {
     try {
-      // Fetch connections from Zürich HB to Muhen via Aarau
+      if (mode === 'quick' && connectionsDataCache.current.length > 0) {
+        // Quick refresh: Use cached connections data
+        console.log('⚡ Quick refresh: Using cached connections');
+        setJourneysWithConnections(connectionsDataCache.current);
+        setLastUpdate(new Date());
+        return;
+      }
+
+      // Full refresh: Fetch connections from Zürich HB to Muhen via Aarau
+      console.log('🔄 Full refresh: Fetching connections from API');
       const response = await fetch(`/api/connections?from=${encodeURIComponent('Zürich HB')}&to=${encodeURIComponent('Muhen')}&via=${encodeURIComponent('Aarau')}&limit=15`);
 
       if (!response.ok) {
@@ -130,6 +142,9 @@ export default function Stationboard() {
 
       setJourneysWithConnections(journeysWithConnectionsData);
 
+      // Cache for quick refreshes
+      connectionsDataCache.current = journeysWithConnectionsData;
+
       // Set data with fake station for consistency
       setData({
         station: {
@@ -149,11 +164,22 @@ export default function Stationboard() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
-  const fetchStationboard = async () => {
+  const fetchStationboard = useCallback(async (mode: 'full' | 'quick' = 'full') => {
+    // Prevent multiple simultaneous fetches
+    if (fetchingRef.current) {
+      console.log('Already fetching, skipping...');
+      return;
+    }
+
+    fetchingRef.current = true;
+
     try {
-      setLoading(true);
+      // Only show loading indicator for full refresh
+      if (mode === 'full') {
+        setLoading(true);
+      }
 
       // Determine start and end stations based on direction
       const startStation = direction === 'toZurich' ? 'Muhen' : 'Zürich HB';
@@ -162,7 +188,7 @@ export default function Stationboard() {
 
       // For Zürich → Muhen, use Connection API instead of Stationboard
       if (direction === 'toMuhen') {
-        await fetchConnectionsRoute();
+        await fetchConnectionsRoute(mode);
         return;
       }
 
@@ -193,14 +219,35 @@ export default function Stationboard() {
         return hasValidArrival;
       });
 
+      let aarauStationboard: Journey[] = [];
+
+      if (aarauJourneys.length > 0) {
+        // Determine limit based on refresh mode
+        const aarauLimit = mode === 'full' ? 100 : 30;
+        const refreshLabel = mode === 'full' ? '🔄 Full refresh' : '⚡ Quick refresh';
+
+        console.log(`${refreshLabel}: Fetching Aarau connections (limit=${aarauLimit})`);
+
+        const aarauResponse = await fetch(`/api/stationboard?station=Aarau&limit=${aarauLimit}`);
+        if (aarauResponse.ok) {
+          const aarauData: StationboardResponse = await aarauResponse.json();
+          aarauStationboard = aarauData.stationboard || [];
+
+          // Only update cache on full refresh
+          if (mode === 'full') {
+            aarauDataCache.current = aarauStationboard;
+          }
+        }
+      }
+
       const journeysWithConnectionsData: JourneyWithConnection[] = await Promise.all(
         aarauJourneys.map(async (journey) => {
           const aarauStop = getAarauStop(journey);
           const aarauArrival = aarauStop?.arrival || null;
           let connections: Connection[] = [];
 
-          if (aarauArrival) {
-            connections = await fetchConnections(aarauArrival, endStation);
+          if (aarauArrival && aarauStationboard.length > 0) {
+            connections = await fetchConnections(aarauArrival, endStation, aarauStationboard);
           }
 
           return {
@@ -220,19 +267,38 @@ export default function Stationboard() {
       setError(err instanceof Error ? err.message : 'An error occurred');
     } finally {
       setLoading(false);
+      fetchingRef.current = false;
     }
-  };
+  }, [direction, fetchConnectionsRoute]);
 
   useEffect(() => {
-    fetchStationboard();
+    // Reset caches when direction changes
+    aarauDataCache.current = [];
+    connectionsDataCache.current = [];
 
-    // Auto-refresh every 30 seconds
-    const interval = setInterval(() => {
-      fetchStationboard();
+    // Initial full refresh
+    fetchStationboard('full');
+
+    // Quick refresh every 30 seconds
+    // - Muhen → Zürich: Fetches Muhen + Aarau (limit=30)
+    // - Zürich → Muhen: Uses cached connections data
+    const quickRefreshInterval = setInterval(() => {
+      fetchStationboard('quick');
     }, 30000);
 
-    return () => clearInterval(interval);
-  }, [direction]); // Re-fetch when direction changes
+    // Full refresh every 3 minutes
+    // - Muhen → Zürich: Fetches Muhen + Aarau (limit=100)
+    // - Zürich → Muhen: Fetches complete connections via API
+    const fullRefreshInterval = setInterval(() => {
+      fetchStationboard('full');
+    }, 180000);
+
+    return () => {
+      clearInterval(quickRefreshInterval);
+      clearInterval(fullRefreshInterval);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [direction]); // Only re-run when direction changes
 
   useEffect(() => {
     // Update current time every minute for accurate "in X min" display
@@ -300,36 +366,16 @@ export default function Stationboard() {
     return aarauStop?.arrival || null;
   };
 
-  const fetchConnections = async (arrivalTime: string, destination: string): Promise<Connection[]> => {
+  const fetchConnections = async (arrivalTime: string, destination: string, aarauStationboard: Journey[]): Promise<Connection[]> => {
     try {
       const arrivalDate = new Date(arrivalTime);
       const arrivalTimestamp = arrivalDate.getTime();
       const minTransferTime = 4 * 60000; // 4 minutes in milliseconds
 
-      // Use stationboard instead of connections API for more reliable results
-      // OJP API returns UTC times, so we need to format them correctly for local time
-      const year = arrivalDate.getFullYear();
-      const month = String(arrivalDate.getMonth() + 1).padStart(2, '0');
-      const day = String(arrivalDate.getDate()).padStart(2, '0');
-      // Use local time methods (getHours/getMinutes already convert from UTC to local)
-      const hours = String(arrivalDate.getHours()).padStart(2, '0');
-      const minutes = String(arrivalDate.getMinutes()).padStart(2, '0');
-      const dateTimeStr = `${year}-${month}-${day} ${hours}:${minutes}`;
+      console.log('Finding connections for arrival time:', arrivalTime, 'to', destination);
 
-      console.log('Fetching connections for arrival time:', arrivalTime, 'to', destination);
-
-      // OJP API returns trains from "now", not from a specific datetime
-      // So we fetch a large number of current trains and filter by time on frontend
-      const response = await fetch(
-        `/api/stationboard?station=Aarau&limit=100`
-      );
-
-      if (!response.ok) {
-        return [];
-      }
-
-      const data: StationboardResponse = await response.json();
-      const allJourneys = data.stationboard || [];
+      // Use the pre-fetched Aarau stationboard data instead of making another API call
+      const allJourneys = aarauStationboard;
 
       // Filter trains going to or via the destination
       const destinationTrains = allJourneys.filter((journey: Journey) => {

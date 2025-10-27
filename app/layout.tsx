@@ -16,6 +16,17 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "SBB Abfahrtstafel - Muhen → Aarau → Zürich HB",
   description: "Live-Abfahrtszeiten und Anschlusszüge von Muhen über Aarau nach Zürich HB",
+  manifest: "/manifest.json",
+  themeColor: "#2E327B",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "black-translucent",
+    title: "SBB Abfahrtstafel",
+  },
+  icons: {
+    icon: "/logos/favicon.ico",
+    apple: "/logos/apple-touch-icon.png",
+  },
 };
 
 export default function RootLayout({
