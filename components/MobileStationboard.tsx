@@ -454,6 +454,16 @@ export default function MobileStationboard() {
     });
   };
 
+  const handlePreviousTrain = () => {
+    setCurrentIndex(prev => {
+      // Loop to end if at the start
+      if (prev <= 0) {
+        return journeysWithConnections.length - 1;
+      }
+      return prev - 1;
+    });
+  };
+
   const handleTouchStart = (e: React.TouchEvent) => {
     touchStartX.current = e.touches[0].clientX;
   };
@@ -469,6 +479,10 @@ export default function MobileStationboard() {
     // Swipe left = next train
     if (diff > swipeThreshold) {
       handleNextTrain();
+    }
+    // Swipe right = previous train
+    else if (diff < -swipeThreshold) {
+      handlePreviousTrain();
     }
   };
 
@@ -568,11 +582,33 @@ export default function MobileStationboard() {
           {(() => {
             const minutesUntil = getMinutesUntil(nextJourney.stop.departure);
             const timeStatus = getTimeStatus(minutesUntil);
-            const showNavigation = minutesUntil < 6;
+            const showNavigation = true; // TODO: Change back to: minutesUntil < 6
             return (
               <div className="flex flex-col items-center mb-6 pb-6 border-b border-gray-600">
-                {/* Circle with Minutes and Arrow Button */}
+                {/* Circle with Minutes and Arrow Buttons */}
                 <div className="relative w-full flex justify-center">
+                  {/* Left Arrow - Previous Train */}
+                  {showNavigation && journeysWithConnections.length > 1 && (
+                    <button
+                      onClick={handlePreviousTrain}
+                      className="absolute left-0 top-1/2 transform -translate-y-1/2 flex items-center justify-center w-14 h-14 bg-white rounded-full shadow-lg hover:bg-gray-100 transition-all active:scale-95"
+                      title="Vorheriger Zug"
+                    >
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="#2E327B"
+                        strokeWidth="3"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        className="w-7 h-7"
+                      >
+                        <polyline points="15 18 9 12 15 6"></polyline>
+                      </svg>
+                    </button>
+                  )}
+
                   {/* Circle with Minutes */}
                   <div
                     className="flex flex-col items-center justify-center rounded-full transition-colors duration-500"
@@ -596,8 +632,8 @@ export default function MobileStationboard() {
                     </div>
                   </div>
 
-                  {/* Navigation Arrow - Only visible when time is critical */}
-                  {showNavigation && (
+                  {/* Right Arrow - Next Train */}
+                  {showNavigation && journeysWithConnections.length > 1 && (
                     <button
                       onClick={handleNextTrain}
                       className="absolute right-0 top-1/2 transform -translate-y-1/2 flex items-center justify-center w-14 h-14 bg-white rounded-full shadow-lg hover:bg-gray-100 transition-all active:scale-95"
