@@ -23,9 +23,12 @@ export default function MobileStationboard() {
   const [lastUpdate, setLastUpdate] = useState<Date>(new Date());
   const [direction, setDirection] = useState<Direction>('toZurich');
   const [isDirectionChanging, setIsDirectionChanging] = useState(false);
+  const [currentIndex, setCurrentIndex] = useState(0);
   const fetchingRef = useRef(false);
   const aarauDataCache = useRef<Journey[]>([]);
   const connectionsDataCache = useRef<JourneyWithConnection[]>([]);
+  const touchStartX = useRef(0);
+  const touchEndX = useRef(0);
 
   const fetchConnectionsRoute = useCallback(async (mode: 'full' | 'quick' = 'full') => {
     try {
@@ -372,6 +375,13 @@ export default function MobileStationboard() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [direction]);
 
+  // Reset currentIndex when journeys change or if current index is out of bounds
+  useEffect(() => {
+    if (currentIndex >= journeysWithConnections.length && journeysWithConnections.length > 0) {
+      setCurrentIndex(0);
+    }
+  }, [journeysWithConnections, currentIndex]);
+
   const formatTime = (dateString: string) => {
     const date = new Date(dateString);
     return date.toLocaleTimeString('de-CH', {
@@ -430,11 +440,40 @@ export default function MobileStationboard() {
 
   const toggleDirection = () => {
     setIsDirectionChanging(true);
+    setCurrentIndex(0); // Reset to first train when changing direction
     setDirection(prev => prev === 'toZurich' ? 'toMuhen' : 'toZurich');
   };
 
-  // Get next train (first in list)
-  const nextJourney = journeysWithConnections[0];
+  const handleNextTrain = () => {
+    setCurrentIndex(prev => {
+      // Loop back to start if at the end
+      if (prev >= journeysWithConnections.length - 1) {
+        return 0;
+      }
+      return prev + 1;
+    });
+  };
+
+  const handleTouchStart = (e: React.TouchEvent) => {
+    touchStartX.current = e.touches[0].clientX;
+  };
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+    touchEndX.current = e.touches[0].clientX;
+  };
+
+  const handleTouchEnd = () => {
+    const swipeThreshold = 50; // minimum swipe distance
+    const diff = touchStartX.current - touchEndX.current;
+
+    // Swipe left = next train
+    if (diff > swipeThreshold) {
+      handleNextTrain();
+    }
+  };
+
+  // Get current train based on index
+  const nextJourney = journeysWithConnections[currentIndex];
 
   // Show loading screen on initial load or direction change
   if ((loading && !data) || isDirectionChanging) {
@@ -518,39 +557,78 @@ export default function MobileStationboard() {
 
       {/* Main Train Card */}
       <div className="p-4">
-        <div className="bg-white rounded-lg shadow-lg p-6" style={{ backgroundColor: '#1E2270' }}>
+        <div
+          className="bg-white rounded-lg shadow-lg p-6"
+          style={{ backgroundColor: '#1E2270' }}
+          onTouchStart={handleTouchStart}
+          onTouchMove={handleTouchMove}
+          onTouchEnd={handleTouchEnd}
+        >
           {/* Countdown Circle */}
           {(() => {
             const minutesUntil = getMinutesUntil(nextJourney.stop.departure);
             const timeStatus = getTimeStatus(minutesUntil);
+            const showNavigation = minutesUntil < 6;
             return (
               <div className="flex flex-col items-center mb-6 pb-6 border-b border-gray-600">
-                {/* Circle with Minutes */}
-                <div
-                  className="flex flex-col items-center justify-center rounded-full transition-colors duration-500"
-                  style={{
-                    width: '140px',
-                    height: '140px',
-                    backgroundColor: timeStatus.color
-                  }}
-                >
+                {/* Circle with Minutes and Arrow Button */}
+                <div className="relative w-full flex justify-center">
+                  {/* Circle with Minutes */}
                   <div
-                    className="text-sm font-medium"
-                    style={{ color: timeStatus.textColor }}
+                    className="flex flex-col items-center justify-center rounded-full transition-colors duration-500"
+                    style={{
+                      width: '140px',
+                      height: '140px',
+                      backgroundColor: timeStatus.color
+                    }}
                   >
-                    noch
+                    <div
+                      className="text-sm font-medium"
+                      style={{ color: timeStatus.textColor }}
+                    >
+                      noch
+                    </div>
+                    <div
+                      className="text-4xl font-bold"
+                      style={{ color: timeStatus.textColor }}
+                    >
+                      {minutesUntil} Min
+                    </div>
                   </div>
-                  <div
-                    className="text-4xl font-bold"
-                    style={{ color: timeStatus.textColor }}
-                  >
-                    {minutesUntil} Min
-                  </div>
+
+                  {/* Navigation Arrow - Only visible when time is critical */}
+                  {showNavigation && (
+                    <button
+                      onClick={handleNextTrain}
+                      className="absolute right-0 top-1/2 transform -translate-y-1/2 flex items-center justify-center w-14 h-14 bg-white rounded-full shadow-lg hover:bg-gray-100 transition-all active:scale-95"
+                      title="Nächster Zug"
+                    >
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="#2E327B"
+                        strokeWidth="3"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        className="w-7 h-7"
+                      >
+                        <polyline points="9 18 15 12 9 6"></polyline>
+                      </svg>
+                    </button>
+                  )}
                 </div>
                 {/* Status Text */}
                 <div className="text-lg font-medium text-white mt-4 text-center">
                   {timeStatus.text}
                 </div>
+
+                {/* Navigation Indicator */}
+                {showNavigation && journeysWithConnections.length > 1 && (
+                  <div className="text-xs text-gray-400 mt-2">
+                    Zug {currentIndex + 1} von {journeysWithConnections.length}
+                  </div>
+                )}
               </div>
             );
           })()}
