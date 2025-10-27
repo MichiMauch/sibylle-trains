@@ -24,7 +24,9 @@ export default function MobileStationboard() {
   const [direction, setDirection] = useState<Direction>('toZurich');
   const [isDirectionChanging, setIsDirectionChanging] = useState(false);
   const [currentIndex, setCurrentIndex] = useState(0);
+  const [previousIndex, setPreviousIndex] = useState<number | null>(null);
   const [slideDirection, setSlideDirection] = useState<'left' | 'right' | null>(null);
+  const [isAnimating, setIsAnimating] = useState(false);
   const fetchingRef = useRef(false);
   const aarauDataCache = useRef<Journey[]>([]);
   const connectionsDataCache = useRef<JourneyWithConnection[]>([]);
@@ -446,31 +448,47 @@ export default function MobileStationboard() {
   };
 
   const handleNextTrain = () => {
+    if (isAnimating) return;
+
+    const nextIndex = currentIndex >= journeysWithConnections.length - 1 ? 0 : currentIndex + 1;
+
+    setPreviousIndex(currentIndex);
     setSlideDirection('left');
+
+    // Small delay to ensure previous card is rendered before starting animation
     setTimeout(() => {
-      setCurrentIndex(prev => {
-        // Loop back to start if at the end
-        if (prev >= journeysWithConnections.length - 1) {
-          return 0;
-        }
-        return prev + 1;
-      });
-      setTimeout(() => setSlideDirection(null), 50);
-    }, 300);
+      setIsAnimating(true);
+      setCurrentIndex(nextIndex);
+
+      // Clean up after animation
+      setTimeout(() => {
+        setIsAnimating(false);
+        setPreviousIndex(null);
+        setSlideDirection(null);
+      }, 300);
+    }, 10);
   };
 
   const handlePreviousTrain = () => {
+    if (isAnimating) return;
+
+    const prevIndex = currentIndex <= 0 ? journeysWithConnections.length - 1 : currentIndex - 1;
+
+    setPreviousIndex(currentIndex);
     setSlideDirection('right');
+
+    // Small delay to ensure previous card is rendered before starting animation
     setTimeout(() => {
-      setCurrentIndex(prev => {
-        // Loop to end if at the start
-        if (prev <= 0) {
-          return journeysWithConnections.length - 1;
-        }
-        return prev - 1;
-      });
-      setTimeout(() => setSlideDirection(null), 50);
-    }, 300);
+      setIsAnimating(true);
+      setCurrentIndex(prevIndex);
+
+      // Clean up after animation
+      setTimeout(() => {
+        setIsAnimating(false);
+        setPreviousIndex(null);
+        setSlideDirection(null);
+      }, 300);
+    }, 10);
   };
 
   const handleTouchStart = (e: React.TouchEvent) => {
@@ -497,6 +515,221 @@ export default function MobileStationboard() {
 
   // Get current train based on index
   const nextJourney = journeysWithConnections[currentIndex];
+
+  // Render train card content for a given journey
+  const renderTrainCardContent = (journey: JourneyWithConnection, indexForDisplay: number) => {
+    const minutesUntil = getMinutesUntil(journey.stop.departure);
+    const timeStatus = getTimeStatus(minutesUntil);
+    const showNavigation = true; // TODO: Change back to: minutesUntil < 6
+
+    return (
+      <>
+        {/* Countdown Circle */}
+        <div className="flex flex-col items-center mb-6 pb-6 border-b border-gray-600">
+          {/* Circle with Minutes and Arrow Buttons */}
+          <div className="relative w-full flex justify-center">
+            {/* Left Arrow - Previous Train */}
+            {showNavigation && journeysWithConnections.length > 1 && (
+              <button
+                onClick={handlePreviousTrain}
+                className="absolute left-0 top-1/2 transform -translate-y-1/2 transition-all active:scale-95"
+                title="Vorheriger Zug"
+              >
+                <img
+                  src="/pictograms/arrow-pointing-left-green.svg"
+                  alt="Zurück"
+                  className="w-6 h-6"
+                />
+              </button>
+            )}
+
+            {/* Circle with Minutes */}
+            <div
+              className="flex flex-col items-center justify-center rounded-full transition-colors duration-500"
+              style={{
+                width: '140px',
+                height: '140px',
+                backgroundColor: timeStatus.color
+              }}
+            >
+              <div
+                className="text-sm font-medium"
+                style={{ color: timeStatus.textColor }}
+              >
+                noch
+              </div>
+              <div
+                className="text-4xl font-bold"
+                style={{ color: timeStatus.textColor }}
+              >
+                {minutesUntil} Min
+              </div>
+            </div>
+
+            {/* Right Arrow - Next Train */}
+            {showNavigation && journeysWithConnections.length > 1 && (
+              <button
+                onClick={handleNextTrain}
+                className="absolute right-0 top-1/2 transform -translate-y-1/2 transition-all active:scale-95"
+                title="Nächster Zug"
+              >
+                <img
+                  src="/pictograms/arrow-pointing-right-green.svg"
+                  alt="Weiter"
+                  className="w-6 h-6"
+                />
+              </button>
+            )}
+          </div>
+          {/* Status Text */}
+          <div className="text-lg font-medium text-white mt-4 text-center">
+            {timeStatus.text}
+          </div>
+
+          {/* Navigation Indicator */}
+          {showNavigation && journeysWithConnections.length > 1 && (
+            <div className="text-xs text-gray-400 mt-2">
+              Zug {indexForDisplay + 1} von {journeysWithConnections.length}
+            </div>
+          )}
+        </div>
+
+        {/* Departure Time & Minutes Until */}
+        <div className="flex items-baseline justify-between mb-4">
+          <div className="text-5xl font-bold text-white">
+            {formatTime(journey.stop.departure)}
+          </div>
+          <div className="text-xl font-medium text-gray-300">
+            Abfahrt
+          </div>
+        </div>
+
+        {/* Train Badge & Platform */}
+        <div className="flex items-center justify-between mb-4">
+          <TrainBadge category={journey.category} number={journey.number} />
+          <div className="flex items-center gap-2">
+            <span className="text-white text-sm">Gleis</span>
+            <PlatformBadge platform={journey.stop.prognosis.platform || journey.stop.platform} />
+          </div>
+        </div>
+
+        {/* Destination */}
+        <div className="text-lg text-gray-300 mb-4">
+          Richtung {journey.to}
+        </div>
+
+        {/* Delay & Platform Change */}
+        <div className="flex items-center gap-4 mb-6">
+          <span className={`text-lg font-semibold ${getDelayColor(journey.stop.delay)}`}>
+            {getDelayText(journey.stop.delay)}
+          </span>
+          {journey.stop.platform && journey.stop.prognosis.platform &&
+           journey.stop.platform !== journey.stop.prognosis.platform && (
+            <div className="flex items-center gap-1">
+              <img
+                src="/icons/platform-change.svg"
+                alt="Gleisänderung"
+                className="h-5 w-auto"
+              />
+              <span className="text-sm text-gray-300">Gleisänderung</span>
+            </div>
+          )}
+        </div>
+
+        {/* Aarau Arrival Info */}
+        {journey.aarauArrival && (
+          <div className="border-t border-gray-600 pt-4 mb-4">
+            <div className="text-sm text-gray-400 mb-2">Ankunft in Aarau</div>
+            <div className="flex items-center justify-between">
+              <div className="text-2xl font-bold text-white">
+                {formatTime(journey.aarauArrival)}
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-white text-sm">Gleis</span>
+                <PlatformBadge platform={journey.aarauPrognosisPlatform || journey.aarauPlatform} />
+              </div>
+            </div>
+            {journey.aarauPlatform && journey.aarauPrognosisPlatform &&
+             journey.aarauPlatform !== journey.aarauPrognosisPlatform && (
+              <div className="flex items-center gap-1 mt-2">
+                <img
+                  src="/icons/platform-change.svg"
+                  alt="Gleisänderung Aarau"
+                  className="h-5 w-auto"
+                />
+                <span className="text-xs text-gray-300">Gleisänderung in Aarau</span>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Connections */}
+        {journey.connections && journey.connections.length > 0 && (
+          <div className="border-t border-gray-600 pt-4">
+            <div className="text-sm text-gray-400 mb-3">
+              Anschlussverbindungen in Aarau
+            </div>
+            <div className="space-y-3">
+              {journey.connections.map((connection, connIndex) => {
+                const productName = connection.products[0] || '';
+                const categoryMatch = productName.match(/^([A-Z]+)/);
+                const numberMatch = productName.match(/(\d+)/);
+                const category = categoryMatch ? categoryMatch[1] : 'TRAIN';
+                const number = numberMatch ? numberMatch[1] : '';
+
+                return (
+                  <div key={connIndex} className="bg-gray-800 bg-opacity-30 rounded p-3">
+                    <div className="flex items-center justify-between mb-2">
+                      <TrainBadge category={category} number={number} />
+                      <div className="flex items-center gap-2">
+                        <span className="text-white text-sm">Gleis</span>
+                        <PlatformBadge platform={connection.from.prognosis.platform || connection.from.platform} />
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-between">
+                      <div className="text-lg font-bold text-white">
+                        {formatTime(connection.from.departure!)}
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-gray-300">→</span>
+                        <span className="text-sm text-gray-300">
+                          {connection.to.arrival ? formatTime(connection.to.arrival) : 'Endstation'}
+                        </span>
+                      </div>
+                    </div>
+
+                    {connection.finalDestination && (
+                      <div className="text-xs text-gray-400 mt-1">
+                        Richtung {connection.finalDestination}
+                      </div>
+                    )}
+
+                    <div className="flex items-center gap-2 mt-2">
+                      {connection.from.platform && connection.from.prognosis.platform &&
+                       connection.from.platform !== connection.from.prognosis.platform && (
+                        <div className="flex items-center gap-1">
+                          <img
+                            src="/icons/platform-change.svg"
+                            alt="Gleisänderung"
+                            className="h-4 w-auto"
+                          />
+                          <span className="text-xs text-gray-300">Gleisänderung</span>
+                        </div>
+                      )}
+                      <span className={`text-sm font-semibold ${getDelayColor(connection.from.delay || 0)}`}>
+                        {getDelayText(connection.from.delay || 0)}
+                      </span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+      </>
+    );
+  };
 
   // Show loading screen on initial load or direction change
   if ((loading && !data) || isDirectionChanging) {
@@ -579,234 +812,49 @@ export default function MobileStationboard() {
       </div>
 
       {/* Main Train Card */}
-      <div className="p-4 overflow-hidden">
+      <div className="p-4">
         <div
-          className="bg-white rounded shadow-lg p-6"
+          className="bg-white rounded shadow-lg p-6 relative overflow-hidden"
           style={{ backgroundColor: '#1E2270' }}
           onTouchStart={handleTouchStart}
           onTouchMove={handleTouchMove}
           onTouchEnd={handleTouchEnd}
         >
-          {/* Animation Wrapper */}
+          {/* Previous card sliding out */}
+          {previousIndex !== null && journeysWithConnections[previousIndex] && (
+            <div
+              style={{
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                right: 0,
+                padding: '1.5rem',
+                transform: isAnimating
+                  ? (slideDirection === 'left' ? 'translateX(-100%)' : 'translateX(100%)')
+                  : 'translateX(0)',
+                opacity: isAnimating ? 0 : 1,
+                transition: isAnimating ? 'transform 300ms ease-out, opacity 300ms ease-out' : 'none',
+                pointerEvents: 'none'
+              }}
+            >
+              {renderTrainCardContent(journeysWithConnections[previousIndex], previousIndex)}
+            </div>
+          )}
+
+          {/* Current card sliding in or static */}
           <div
             style={{
-              transform: slideDirection === 'left' ? 'translateX(-100%)' : slideDirection === 'right' ? 'translateX(100%)' : 'translateX(0)',
-              opacity: slideDirection ? 0 : 1,
-              transition: 'transform 300ms ease-out, opacity 300ms ease-out'
+              transform: isAnimating
+                ? 'translateX(0)'
+                : previousIndex !== null
+                  ? (slideDirection === 'left' ? 'translateX(100%)' : 'translateX(-100%)')
+                  : 'translateX(0)',
+              opacity: isAnimating || previousIndex === null ? 1 : 0,
+              transition: isAnimating ? 'transform 300ms ease-out, opacity 300ms ease-out' : 'none'
             }}
           >
-          {/* Countdown Circle */}
-          {(() => {
-            const minutesUntil = getMinutesUntil(nextJourney.stop.departure);
-            const timeStatus = getTimeStatus(minutesUntil);
-            const showNavigation = true; // TODO: Change back to: minutesUntil < 6
-            return (
-              <div className="flex flex-col items-center mb-6 pb-6 border-b border-gray-600">
-                {/* Circle with Minutes and Arrow Buttons */}
-                <div className="relative w-full flex justify-center">
-                  {/* Left Arrow - Previous Train */}
-                  {showNavigation && journeysWithConnections.length > 1 && (
-                    <button
-                      onClick={handlePreviousTrain}
-                      className="absolute left-0 top-1/2 transform -translate-y-1/2 transition-all active:scale-95"
-                      title="Vorheriger Zug"
-                    >
-                      <img
-                        src="/pictograms/arrow-pointing-left-green.svg"
-                        alt="Zurück"
-                        className="w-12 h-12"
-                      />
-                    </button>
-                  )}
-
-                  {/* Circle with Minutes */}
-                  <div
-                    className="flex flex-col items-center justify-center rounded-full transition-colors duration-500"
-                    style={{
-                      width: '140px',
-                      height: '140px',
-                      backgroundColor: timeStatus.color
-                    }}
-                  >
-                    <div
-                      className="text-sm font-medium"
-                      style={{ color: timeStatus.textColor }}
-                    >
-                      noch
-                    </div>
-                    <div
-                      className="text-4xl font-bold"
-                      style={{ color: timeStatus.textColor }}
-                    >
-                      {minutesUntil} Min
-                    </div>
-                  </div>
-
-                  {/* Right Arrow - Next Train */}
-                  {showNavigation && journeysWithConnections.length > 1 && (
-                    <button
-                      onClick={handleNextTrain}
-                      className="absolute right-0 top-1/2 transform -translate-y-1/2 transition-all active:scale-95"
-                      title="Nächster Zug"
-                    >
-                      <img
-                        src="/pictograms/arrow-pointing-right-green.svg"
-                        alt="Weiter"
-                        className="w-12 h-12"
-                      />
-                    </button>
-                  )}
-                </div>
-                {/* Status Text */}
-                <div className="text-lg font-medium text-white mt-4 text-center">
-                  {timeStatus.text}
-                </div>
-
-                {/* Navigation Indicator */}
-                {showNavigation && journeysWithConnections.length > 1 && (
-                  <div className="text-xs text-gray-400 mt-2">
-                    Zug {currentIndex + 1} von {journeysWithConnections.length}
-                  </div>
-                )}
-              </div>
-            );
-          })()}
-
-          {/* Departure Time & Minutes Until */}
-          <div className="flex items-baseline justify-between mb-4">
-            <div className="text-5xl font-bold text-white">
-              {formatTime(nextJourney.stop.departure)}
-            </div>
-            <div className="text-xl font-medium text-gray-300">
-              Abfahrt
-            </div>
+            {renderTrainCardContent(nextJourney, currentIndex)}
           </div>
-
-          {/* Train Badge & Platform */}
-          <div className="flex items-center justify-between mb-4">
-            <TrainBadge category={nextJourney.category} number={nextJourney.number} />
-            <div className="flex items-center gap-2">
-              <span className="text-white text-sm">Gleis</span>
-              <PlatformBadge platform={nextJourney.stop.prognosis.platform || nextJourney.stop.platform} />
-            </div>
-          </div>
-
-          {/* Destination */}
-          <div className="text-lg text-gray-300 mb-4">
-            Richtung {nextJourney.to}
-          </div>
-
-          {/* Delay & Platform Change */}
-          <div className="flex items-center gap-4 mb-6">
-            <span className={`text-lg font-semibold ${getDelayColor(nextJourney.stop.delay)}`}>
-              {getDelayText(nextJourney.stop.delay)}
-            </span>
-            {nextJourney.stop.platform && nextJourney.stop.prognosis.platform &&
-             nextJourney.stop.platform !== nextJourney.stop.prognosis.platform && (
-              <div className="flex items-center gap-1">
-                <img
-                  src="/icons/platform-change.svg"
-                  alt="Gleisänderung"
-                  className="h-5 w-auto"
-                />
-                <span className="text-sm text-gray-300">Gleisänderung</span>
-              </div>
-            )}
-          </div>
-
-          {/* Aarau Arrival Info */}
-          {nextJourney.aarauArrival && (
-            <div className="border-t border-gray-600 pt-4 mb-4">
-              <div className="text-sm text-gray-400 mb-2">Ankunft in Aarau</div>
-              <div className="flex items-center justify-between">
-                <div className="text-2xl font-bold text-white">
-                  {formatTime(nextJourney.aarauArrival)}
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="text-white text-sm">Gleis</span>
-                  <PlatformBadge platform={nextJourney.aarauPrognosisPlatform || nextJourney.aarauPlatform} />
-                </div>
-              </div>
-              {nextJourney.aarauPlatform && nextJourney.aarauPrognosisPlatform &&
-               nextJourney.aarauPlatform !== nextJourney.aarauPrognosisPlatform && (
-                <div className="flex items-center gap-1 mt-2">
-                  <img
-                    src="/icons/platform-change.svg"
-                    alt="Gleisänderung Aarau"
-                    className="h-5 w-auto"
-                  />
-                  <span className="text-xs text-gray-300">Gleisänderung in Aarau</span>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Connections */}
-          {nextJourney.connections && nextJourney.connections.length > 0 && (
-            <div className="border-t border-gray-600 pt-4">
-              <div className="text-sm text-gray-400 mb-3">
-                Anschlussverbindungen in Aarau
-              </div>
-              <div className="space-y-3">
-                {nextJourney.connections.map((connection, connIndex) => {
-                  const productName = connection.products[0] || '';
-                  const categoryMatch = productName.match(/^([A-Z]+)/);
-                  const numberMatch = productName.match(/(\d+)/);
-                  const category = categoryMatch ? categoryMatch[1] : 'TRAIN';
-                  const number = numberMatch ? numberMatch[1] : '';
-
-                  return (
-                    <div key={connIndex} className="bg-gray-800 bg-opacity-30 rounded p-3">
-                      <div className="flex items-center justify-between mb-2">
-                        <TrainBadge category={category} number={number} />
-                        <div className="flex items-center gap-2">
-                          <span className="text-white text-sm">Gleis</span>
-                          <PlatformBadge platform={connection.from.prognosis.platform || connection.from.platform} />
-                        </div>
-                      </div>
-
-                      <div className="flex items-center justify-between">
-                        <div className="text-lg font-bold text-white">
-                          {formatTime(connection.from.departure!)}
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <span className="text-gray-300">→</span>
-                          <span className="text-sm text-gray-300">
-                            {connection.to.arrival ? formatTime(connection.to.arrival) : 'Endstation'}
-                          </span>
-                        </div>
-                      </div>
-
-                      {connection.finalDestination && (
-                        <div className="text-xs text-gray-400 mt-1">
-                          Richtung {connection.finalDestination}
-                        </div>
-                      )}
-
-                      <div className="flex items-center gap-2 mt-2">
-                        {connection.from.platform && connection.from.prognosis.platform &&
-                         connection.from.platform !== connection.from.prognosis.platform && (
-                          <div className="flex items-center gap-1">
-                            <img
-                              src="/icons/platform-change.svg"
-                              alt="Gleisänderung"
-                              className="h-4 w-auto"
-                            />
-                            <span className="text-xs text-gray-300">Gleisänderung</span>
-                          </div>
-                        )}
-                        <span className={`text-sm font-semibold ${getDelayColor(connection.from.delay || 0)}`}>
-                          {getDelayText(connection.from.delay || 0)}
-                        </span>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-          </div>
-          {/* End Animation Wrapper */}
         </div>
       </div>
     </div>
