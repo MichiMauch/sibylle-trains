@@ -22,6 +22,7 @@ export default function MobileStationboard() {
   const [error, setError] = useState<string | null>(null);
   const [lastUpdate, setLastUpdate] = useState<Date>(new Date());
   const [direction, setDirection] = useState<Direction>('toZurich');
+  const [isDirectionChanging, setIsDirectionChanging] = useState(false);
   const fetchingRef = useRef(false);
   const aarauDataCache = useRef<Journey[]>([]);
   const connectionsDataCache = useRef<JourneyWithConnection[]>([]);
@@ -146,6 +147,7 @@ export default function MobileStationboard() {
       setError(err instanceof Error ? err.message : 'An error occurred');
     } finally {
       setLoading(false);
+      setIsDirectionChanging(false);
     }
   }, []);
 
@@ -344,6 +346,7 @@ export default function MobileStationboard() {
       setError(err instanceof Error ? err.message : 'An error occurred');
     } finally {
       setLoading(false);
+      setIsDirectionChanging(false);
       fetchingRef.current = false;
     }
   }, [direction, fetchConnectionsRoute]);
@@ -426,16 +429,24 @@ export default function MobileStationboard() {
   };
 
   const toggleDirection = () => {
+    setIsDirectionChanging(true);
     setDirection(prev => prev === 'toZurich' ? 'toMuhen' : 'toZurich');
   };
 
   // Get next train (first in list)
   const nextJourney = journeysWithConnections[0];
 
-  if (loading && !data) {
+  // Show loading screen on initial load or direction change
+  if ((loading && !data) || isDirectionChanging) {
     return (
-      <div className="flex items-center justify-center min-h-screen" style={{ backgroundColor: '#2E327B' }}>
-        <div className="text-xl text-white">Lade Abfahrtszeiten...</div>
+      <div className="flex flex-col items-center justify-center min-h-screen gap-6" style={{ backgroundColor: '#2E327B' }}>
+        {/* SBB Clock as Loading Indicator */}
+        <SbbClock size={120} darkBackground={true} fps={30} />
+
+        {/* Loading Text */}
+        <div className="text-xl font-medium text-white">
+          Lade Abfahrtszeiten...
+        </div>
       </div>
     );
   }
@@ -448,10 +459,23 @@ export default function MobileStationboard() {
     );
   }
 
-  if (!nextJourney) {
+  // Only show "no trains" if we're definitely not loading
+  if (!nextJourney && !loading && !isDirectionChanging) {
     return (
       <div className="flex items-center justify-center min-h-screen" style={{ backgroundColor: '#2E327B' }}>
         <div className="text-xl text-white">Keine Züge gefunden</div>
+      </div>
+    );
+  }
+
+  // Show loading if still fetching and no data yet
+  if (!nextJourney) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-screen gap-6" style={{ backgroundColor: '#2E327B' }}>
+        <SbbClock size={120} darkBackground={true} fps={30} />
+        <div className="text-xl font-medium text-white">
+          Lade Abfahrtszeiten...
+        </div>
       </div>
     );
   }
