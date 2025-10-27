@@ -572,7 +572,7 @@ export default function MobileStationboard() {
       {/* Main Train Card */}
       <div className="p-4">
         <div
-          className="bg-white rounded-lg shadow-lg p-6"
+          className="bg-white rounded shadow-lg p-6"
           style={{ backgroundColor: '#1E2270' }}
           onTouchStart={handleTouchStart}
           onTouchMove={handleTouchMove}
@@ -591,13 +591,13 @@ export default function MobileStationboard() {
                   {showNavigation && journeysWithConnections.length > 1 && (
                     <button
                       onClick={handlePreviousTrain}
-                      className="absolute left-0 top-1/2 transform -translate-y-1/2 flex items-center justify-center w-14 h-14 bg-white rounded-full shadow-lg hover:bg-gray-100 transition-all active:scale-95"
+                      className="absolute left-0 top-1/2 transform -translate-y-1/2 transition-all active:scale-95"
                       title="Vorheriger Zug"
                     >
                       <img
-                        src="/icons/arrow-left-medium.svg"
+                        src="/pictograms/arrow-pointing-left-green.svg"
                         alt="Zurück"
-                        className="w-9 h-9"
+                        className="w-12 h-12"
                       />
                     </button>
                   )}
@@ -629,13 +629,13 @@ export default function MobileStationboard() {
                   {showNavigation && journeysWithConnections.length > 1 && (
                     <button
                       onClick={handleNextTrain}
-                      className="absolute right-0 top-1/2 transform -translate-y-1/2 flex items-center justify-center w-14 h-14 bg-white rounded-full shadow-lg hover:bg-gray-100 transition-all active:scale-95"
+                      className="absolute right-0 top-1/2 transform -translate-y-1/2 transition-all active:scale-95"
                       title="Nächster Zug"
                     >
                       <img
-                        src="/icons/arrow-right-medium.svg"
+                        src="/pictograms/arrow-pointing-right-green.svg"
                         alt="Weiter"
-                        className="w-9 h-9"
+                        className="w-12 h-12"
                       />
                     </button>
                   )}
