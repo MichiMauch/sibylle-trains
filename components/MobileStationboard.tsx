@@ -24,6 +24,7 @@ export default function MobileStationboard() {
   const [direction, setDirection] = useState<Direction>('toZurich');
   const [isDirectionChanging, setIsDirectionChanging] = useState(false);
   const [currentIndex, setCurrentIndex] = useState(0);
+  const [slideDirection, setSlideDirection] = useState<'left' | 'right' | null>(null);
   const fetchingRef = useRef(false);
   const aarauDataCache = useRef<Journey[]>([]);
   const connectionsDataCache = useRef<JourneyWithConnection[]>([]);
@@ -445,23 +446,31 @@ export default function MobileStationboard() {
   };
 
   const handleNextTrain = () => {
-    setCurrentIndex(prev => {
-      // Loop back to start if at the end
-      if (prev >= journeysWithConnections.length - 1) {
-        return 0;
-      }
-      return prev + 1;
-    });
+    setSlideDirection('left');
+    setTimeout(() => {
+      setCurrentIndex(prev => {
+        // Loop back to start if at the end
+        if (prev >= journeysWithConnections.length - 1) {
+          return 0;
+        }
+        return prev + 1;
+      });
+      setTimeout(() => setSlideDirection(null), 50);
+    }, 300);
   };
 
   const handlePreviousTrain = () => {
-    setCurrentIndex(prev => {
-      // Loop to end if at the start
-      if (prev <= 0) {
-        return journeysWithConnections.length - 1;
-      }
-      return prev - 1;
-    });
+    setSlideDirection('right');
+    setTimeout(() => {
+      setCurrentIndex(prev => {
+        // Loop to end if at the start
+        if (prev <= 0) {
+          return journeysWithConnections.length - 1;
+        }
+        return prev - 1;
+      });
+      setTimeout(() => setSlideDirection(null), 50);
+    }, 300);
   };
 
   const handleTouchStart = (e: React.TouchEvent) => {
@@ -570,7 +579,7 @@ export default function MobileStationboard() {
       </div>
 
       {/* Main Train Card */}
-      <div className="p-4">
+      <div className="p-4 overflow-hidden">
         <div
           className="bg-white rounded shadow-lg p-6"
           style={{ backgroundColor: '#1E2270' }}
@@ -578,6 +587,14 @@ export default function MobileStationboard() {
           onTouchMove={handleTouchMove}
           onTouchEnd={handleTouchEnd}
         >
+          {/* Animation Wrapper */}
+          <div
+            style={{
+              transform: slideDirection === 'left' ? 'translateX(-100%)' : slideDirection === 'right' ? 'translateX(100%)' : 'translateX(0)',
+              opacity: slideDirection ? 0 : 1,
+              transition: 'transform 300ms ease-out, opacity 300ms ease-out'
+            }}
+          >
           {/* Countdown Circle */}
           {(() => {
             const minutesUntil = getMinutesUntil(nextJourney.stop.departure);
@@ -788,6 +805,8 @@ export default function MobileStationboard() {
               </div>
             </div>
           )}
+          </div>
+          {/* End Animation Wrapper */}
         </div>
       </div>
     </div>
