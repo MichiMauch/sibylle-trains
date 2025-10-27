@@ -412,6 +412,15 @@ export default function MobileStationboard() {
     return diffMins;
   };
 
+  const formatTimeUntilDeparture = (minutes: number): string => {
+    if (minutes < 60) {
+      return `${minutes} Min`;
+    }
+    const hours = Math.floor(minutes / 60);
+    const mins = minutes % 60;
+    return `${hours}:${mins.toString().padStart(2, '0')} h`;
+  };
+
   const getTimeStatus = (minutes: number) => {
     if (minutes < 3) {
       return {
@@ -562,7 +571,7 @@ export default function MobileStationboard() {
                 className="text-4xl font-bold"
                 style={{ color: timeStatus.textColor }}
               >
-                {minutesUntil} Min
+                {formatTimeUntilDeparture(minutesUntil)}
               </div>
             </div>
 
