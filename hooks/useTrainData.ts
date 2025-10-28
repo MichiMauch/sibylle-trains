@@ -22,6 +22,35 @@ export function useTrainData() {
   const fetchingRef = useRef(false);
   const aarauDataCache = useRef<Journey[]>([]);
   const connectionsDataCache = useRef<JourneyWithConnection[]>([]);
+  const retryTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const retryCountRef = useRef(0);
+  const fetchStationboardRef = useRef<((mode: 'full' | 'quick') => Promise<void>) | null>(null);
+
+  // Schedule automatic retry on error
+  const scheduleRetry = (mode: 'full' | 'quick' = 'full') => {
+    // Clear any existing retry timeout
+    if (retryTimeoutRef.current) {
+      clearTimeout(retryTimeoutRef.current);
+    }
+
+    // Only retry up to 3 times
+    if (retryCountRef.current >= 3) {
+      console.log('❌ Max retries reached, stopping automatic retry');
+      return;
+    }
+
+    retryCountRef.current += 1;
+    const retryDelay = Math.min(5000 * retryCountRef.current, 15000); // 5s, 10s, 15s
+
+    console.log(`🔄 Scheduling retry ${retryCountRef.current}/3 in ${retryDelay / 1000}s`);
+
+    retryTimeoutRef.current = setTimeout(() => {
+      console.log(`♻️ Retrying fetch (attempt ${retryCountRef.current}/3)`);
+      if (fetchStationboardRef.current) {
+        fetchStationboardRef.current(mode);
+      }
+    }, retryDelay);
+  };
 
   const getAarauStop = (journey: Journey) => {
     const aarauStop = journey.passList?.find(
@@ -248,8 +277,12 @@ export function useTrainData() {
 
       setError(null);
       setLastUpdate(new Date());
+      retryCountRef.current = 0; // Reset retry counter on success
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'An error occurred');
+      const errorMessage = err instanceof Error ? err.message : 'Verbindungsfehler';
+      console.error('❌ Fetch error:', errorMessage);
+      setError(errorMessage);
+      scheduleRetry(mode);
     } finally {
       setLoading(false);
       setIsDirectionChanging(false);
@@ -342,8 +375,12 @@ export function useTrainData() {
       setJourneysWithConnections(journeysWithConnectionsData);
       setError(null);
       setLastUpdate(new Date());
+      retryCountRef.current = 0; // Reset retry counter on success
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'An error occurred');
+      const errorMessage = err instanceof Error ? err.message : 'Verbindungsfehler';
+      console.error('❌ Fetch error:', errorMessage);
+      setError(errorMessage);
+      scheduleRetry(mode);
     } finally {
       setLoading(false);
       setIsDirectionChanging(false);
@@ -351,23 +388,85 @@ export function useTrainData() {
     }
   }, [direction, fetchConnectionsRoute]);
 
+  // Store fetchStationboard in ref for retry logic
+  fetchStationboardRef.current = fetchStationboard;
+
   useEffect(() => {
     aarauDataCache.current = [];
     connectionsDataCache.current = [];
 
+    let quickRefreshInterval: NodeJS.Timeout | null = null;
+    let fullRefreshInterval: NodeJS.Timeout | null = null;
+    let isVisible = !document.hidden;
+
+    // Initial fetch
     fetchStationboard('full');
 
-    const quickRefreshInterval = setInterval(() => {
-      fetchStationboard('quick');
-    }, 30000);
+    // Start intervals
+    const startIntervals = () => {
+      if (quickRefreshInterval) clearInterval(quickRefreshInterval);
+      if (fullRefreshInterval) clearInterval(fullRefreshInterval);
 
-    const fullRefreshInterval = setInterval(() => {
-      fetchStationboard('full');
-    }, 180000);
+      quickRefreshInterval = setInterval(() => {
+        if (!document.hidden) {
+          fetchStationboard('quick');
+        }
+      }, 30000);
+
+      fullRefreshInterval = setInterval(() => {
+        if (!document.hidden) {
+          fetchStationboard('full');
+        }
+      }, 180000);
+    };
+
+    // Stop intervals
+    const stopIntervals = () => {
+      if (quickRefreshInterval) {
+        clearInterval(quickRefreshInterval);
+        quickRefreshInterval = null;
+      }
+      if (fullRefreshInterval) {
+        clearInterval(fullRefreshInterval);
+        fullRefreshInterval = null;
+      }
+    };
+
+    // Handle visibility change
+    const handleVisibilityChange = () => {
+      if (document.hidden) {
+        // Page is hidden, stop intervals
+        console.log('📱 App hidden, pausing fetches');
+        stopIntervals();
+        isVisible = false;
+      } else {
+        // Page is visible again
+        console.log('📱 App visible, resuming fetches');
+        isVisible = true;
+
+        // Fetch fresh data immediately
+        fetchStationboard('full');
+
+        // Restart intervals
+        startIntervals();
+      }
+    };
+
+    // Start intervals initially
+    startIntervals();
+
+    // Listen for visibility changes
+    document.addEventListener('visibilitychange', handleVisibilityChange);
 
     return () => {
-      clearInterval(quickRefreshInterval);
-      clearInterval(fullRefreshInterval);
+      stopIntervals();
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+
+      // Clear retry timeout on cleanup
+      if (retryTimeoutRef.current) {
+        clearTimeout(retryTimeoutRef.current);
+        retryTimeoutRef.current = null;
+      }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [direction]);
@@ -375,6 +474,13 @@ export function useTrainData() {
   const toggleDirection = () => {
     setIsDirectionChanging(true);
     setDirection(prev => prev === 'toZurich' ? 'toMuhen' : 'toZurich');
+
+    // Clear any pending retries when changing direction
+    if (retryTimeoutRef.current) {
+      clearTimeout(retryTimeoutRef.current);
+      retryTimeoutRef.current = null;
+    }
+    retryCountRef.current = 0;
   };
 
   return {
